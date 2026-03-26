@@ -1,6 +1,7 @@
 const { Client } = require('@elastic/elasticsearch');
 
 const INDEX = 'finance-transactions';
+const BALANCES_INDEX = 'finance-account-balances';
 
 let client;
 
@@ -48,6 +49,61 @@ const INDEX_MAPPING = {
   },
 };
 
+const BALANCES_MAPPING = {
+  mappings: {
+    properties: {
+      id:               { type: 'keyword' },
+      date:             { type: 'date', format: 'yyyy-MM-dd' },
+      balance:          { type: 'long' },
+      balance_dollars:  { type: 'float' },
+      account_id:       { type: 'keyword' },
+      account_name:     { type: 'keyword' },
+      account_type:     { type: 'keyword' },
+      account_offbudget:{ type: 'boolean' },
+      synced_at:        { type: 'date' },
+    },
+  },
+};
+
+async function ensureBalancesIndex() {
+  const es = getClient();
+  const exists = await es.indices.exists({ index: BALANCES_INDEX });
+  if (!exists) {
+    await es.indices.create({ index: BALANCES_INDEX, ...BALANCES_MAPPING });
+    console.log(`Created index: ${BALANCES_INDEX}`);
+  } else {
+    await es.indices.putMapping({ index: BALANCES_INDEX, ...BALANCES_MAPPING.mappings });
+    console.log(`Index exists: ${BALANCES_INDEX}`);
+  }
+}
+
+async function bulkIndexBalances(docs) {
+  if (docs.length === 0) return { indexed: 0, errors: 0 };
+
+  const es = getClient();
+  const operations = docs.flatMap((doc) => [
+    { index: { _index: BALANCES_INDEX, _id: doc.id } },
+    doc,
+  ]);
+
+  const result = await es.bulk({ operations, refresh: false });
+
+  const errors = result.items.filter((i) => i.index?.error).length;
+  if (errors > 0) {
+    result.items
+      .filter((i) => i.index?.error)
+      .slice(0, 5)
+      .forEach((i) => console.error('Balance index error:', i.index.error));
+  }
+
+  return { indexed: docs.length - errors, errors };
+}
+
+async function refreshBalancesIndex() {
+  const es = getClient();
+  await es.indices.refresh({ index: BALANCES_INDEX });
+}
+
 async function ensureIndex() {
   const es = getClient();
   const exists = await es.indices.exists({ index: INDEX });
@@ -88,4 +144,7 @@ async function refreshIndex() {
   await es.indices.refresh({ index: INDEX });
 }
 
-module.exports = { ensureIndex, bulkIndex, refreshIndex };
+module.exports = {
+  ensureIndex, bulkIndex, refreshIndex,
+  ensureBalancesIndex, bulkIndexBalances, refreshBalancesIndex,
+};

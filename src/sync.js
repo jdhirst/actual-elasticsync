@@ -1,9 +1,11 @@
 require('dotenv').config();
 
 const { connect, disconnect, fetchAllData, fetchTransactions } = require('./actual');
-const { ensureIndex, bulkIndex, refreshIndex } = require('./elasticsearch');
+const { ensureIndex, bulkIndex, refreshIndex,
+        ensureBalancesIndex, bulkIndexBalances, refreshBalancesIndex } = require('./elasticsearch');
 const { flattenTransaction } = require('./enrich');
 const { detectSubscriptions } = require('./subscriptions');
+const { computeBalanceSnapshots } = require('./balances');
 
 const BATCH_SIZE = 500;
 const DEFAULT_START_DATE = '2000-01-01';
@@ -28,7 +30,7 @@ async function sync() {
   await connect();
 
   try {
-    await ensureIndex();
+    await Promise.all([ensureIndex(), ensureBalancesIndex()]);
 
     const lookups = await fetchAllData();
     const { accounts } = lookups;
@@ -71,6 +73,12 @@ async function sync() {
     await refreshIndex();
 
     console.log(`\nDone. Indexed: ${totalIndexed}, Errors: ${totalErrors}`);
+
+    // Account balance snapshots
+    const snapshots = computeBalanceSnapshots(allTransactions, lookups.accountMap);
+    const balResult = await bulkIndexBalances(snapshots);
+    await refreshBalancesIndex();
+    console.log(`Balance snapshots: ${balResult.indexed} indexed across ${accounts.length} accounts, ${balResult.errors} errors`);
   } finally {
     await disconnect();
   }
