@@ -1,0 +1,21 @@
+{
+  "name": "actual-elastic",
+  "version": "1.0.0",
+  "description": "Sync Actual Budget data to Elasticsearch",
+  "main": "src/sync.js",
+  "scripts": {
+    "sync": "node src/sync.js",
+    "sync:full": "node src/sync.js --full"
+  },
+  "dependencies": {
+    "@actual-app/api": "^26.0.0",
+    "@elastic/elasticsearch": "^8.0.0",
+    "dotenv": "^16.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "better-sqlite3": "12.8.0"
+    },
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  }
+}
