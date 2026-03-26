@@ -75,6 +75,28 @@ All transactions are indexed into `finance-transactions`. Each document has the 
 | `category_group_name` | keyword | Category group name |
 | `synced_at` | date | Timestamp when this sync ran |
 
+## Docker deployment
+
+The easiest way to run this continuously on a server. The container syncs on startup then every 24 hours.
+
+```bash
+cp .env.example .env
+# Fill in your credentials
+docker compose up -d
+```
+
+Logs:
+```bash
+docker compose logs -f
+```
+
+The Actual Budget cache is stored in a named volume (`actual-data`) so the budget file persists across container restarts.
+
+To trigger an immediate sync without waiting:
+```bash
+docker compose exec sync node src/sync.js
+```
+
 ## Windows note
 
 On Windows with Node 25+ and Visual Studio 2026, `better-sqlite3` (a dependency of `@actual-app/api`) may fail to compile. The `.npmrc` in this repo forces the VS2022 toolset which resolves this. You'll need Visual Studio 2022 or the VS2022 Build Tools installed.

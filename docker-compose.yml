@@ -1,0 +1,10 @@
+services:
+  sync:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - actual-data:/app/data
+
+volumes:
+  actual-data:
