@@ -4,7 +4,7 @@ const SYNC_TS = new Date().toISOString();
  * Enrich a raw Actual transaction with human-readable fields from lookup maps.
  * Handles both regular transactions and split sub-transactions.
  */
-function enrichTransaction(tx, { accountMap, payeeMap, categoryMap }, parentId = null) {
+function enrichTransaction(tx, { accountMap, payeeMap, categoryMap }, parentId = null, subscriptions = {}) {
   const account = accountMap[tx.account] || {};
   const payee = payeeMap[tx.payee] || {};
   const category = categoryMap[tx.category] || {};
@@ -34,6 +34,11 @@ function enrichTransaction(tx, { accountMap, payeeMap, categoryMap }, parentId =
     payee_id: tx.payee || null,
     payee_name: payee.name || null,
 
+    is_subscription: !!(tx.payee && subscriptions[tx.payee]),
+    subscription_cadence: subscriptions[tx.payee]?.cadence || null,
+    subscription_typical_amount: subscriptions[tx.payee]?.typical_amount ?? null,
+    subscription_typical_amount_dollars: subscriptions[tx.payee]?.typical_amount_dollars ?? null,
+
     category_id: tx.category || null,
     category_name: category.name || null,
     category_group_id: category.groupId || null,
@@ -48,16 +53,16 @@ function enrichTransaction(tx, { accountMap, payeeMap, categoryMap }, parentId =
  * Parent transactions are indexed with their own data; children are indexed separately
  * with a parent_id reference so you can query either level.
  */
-function flattenTransaction(tx, lookups) {
+function flattenTransaction(tx, lookups, subscriptions = {}) {
   const docs = [];
-  const enriched = enrichTransaction(tx, lookups);
+  const enriched = enrichTransaction(tx, lookups, null, subscriptions);
   docs.push(enriched);
 
   if (tx.subtransactions && tx.subtransactions.length > 0) {
     for (const sub of tx.subtransactions) {
       // Sub-transactions inherit account from parent
       const subWithAccount = { ...sub, account: tx.account };
-      docs.push(enrichTransaction(subWithAccount, lookups, tx.id));
+      docs.push(enrichTransaction(subWithAccount, lookups, tx.id, subscriptions));
     }
   }
 

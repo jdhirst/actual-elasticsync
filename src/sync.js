@@ -3,6 +3,7 @@ require('dotenv').config();
 const { connect, disconnect, fetchAllData, fetchTransactions } = require('./actual');
 const { ensureIndex, bulkIndex, refreshIndex } = require('./elasticsearch');
 const { flattenTransaction } = require('./enrich');
+const { detectSubscriptions } = require('./subscriptions');
 
 const BATCH_SIZE = 500;
 const DEFAULT_START_DATE = '2000-01-01';
@@ -34,6 +35,20 @@ async function sync() {
 
     console.log(`Found ${accounts.length} accounts`);
 
+    // Fetch all transactions into memory first so subscription detection
+    // can analyse the full history across all accounts before indexing.
+    const allTransactions = [];
+    for (const account of accounts) {
+      process.stdout.write(`  Fetching "${account.name}"... `);
+      const txs = await fetchTransactions(account.id, startDate, endDate);
+      allTransactions.push(...txs);
+      console.log(`${txs.length} transactions`);
+    }
+
+    const subscriptions = detectSubscriptions(allTransactions);
+    console.log(`\nDetected ${Object.keys(subscriptions).length} subscription payees`);
+
+    // Enrich and bulk-index
     let totalIndexed = 0;
     let totalErrors = 0;
     let batch = [];
@@ -46,23 +61,10 @@ async function sync() {
       batch = [];
     };
 
-    for (const account of accounts) {
-      process.stdout.write(`  Syncing "${account.name}"... `);
-
-      const transactions = await fetchTransactions(account.id, startDate, endDate);
-      let count = 0;
-
-      for (const tx of transactions) {
-        const docs = flattenTransaction(tx, lookups);
-        batch.push(...docs);
-        count += docs.length;
-
-        if (batch.length >= BATCH_SIZE) {
-          await flushBatch();
-        }
-      }
-
-      console.log(`${transactions.length} transactions (${count} docs)`);
+    for (const tx of allTransactions) {
+      const docs = flattenTransaction(tx, lookups, subscriptions);
+      batch.push(...docs);
+      if (batch.length >= BATCH_SIZE) await flushBatch();
     }
 
     await flushBatch();
